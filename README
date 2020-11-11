@@ -1,0 +1,7 @@
+R package imptools
+
+Functions for working with implausibility in history matching.
+
+Doug McNeall
+
+You can install using devtools::install_github('dougmcneall/imptools')
