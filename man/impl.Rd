@@ -4,20 +4,20 @@
 \alias{impl}
 \title{Calculate Implausibility}
 \usage{
-impl(em, em.sd, disc, disc.sd, obs, obs.sd)
+impl(em, em_sd, disc, disc_sd, obs, obs_sd)
 }
 \arguments{
 \item{em}{Emulator mean}
 
-\item{em.sd}{Emulator uncertainty (standard deviation)}
+\item{em_sd}{Emulator uncertainty (standard deviation)}
 
 \item{disc}{Model discrepancy mean}
 
-\item{disc.sd}{Model discrepancy uncertainty (standard deviation)}
+\item{disc_sd}{Model discrepancy uncertainty (standard deviation)}
 
 \item{obs}{Observation mean}
 
-\item{obs.sd}{Observation uncertainty (standard deviation)}
+\item{obs_sd}{Observation uncertainty (standard deviation)}
 }
 \value{
 Implausibility score
