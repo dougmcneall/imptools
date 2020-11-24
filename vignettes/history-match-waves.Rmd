@@ -1,0 +1,407 @@
+---
+title: "history-match-waves"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{history-match-waves}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+```{r setup}
+library(imptools)
+library(lhs)
+library(DiceKriging)
+library(emtools)
+library(viztools)
+
+```
+
+A set of toy model Functions
+```{r toy}
+
+# Friedman
+friedman = function(x){
+  
+  stopifnot(length(x)==4)
+  
+  out = 10*sin(pi*x[1]*x[2]) + 20*(x[3] - 0.5)^2 + 10*x[4] # + 5*x5
+  out
+}
+
+park1 = function(x){
+  
+  stopifnot(length(x)==4)
+  
+  out = x[1]/2 * sqrt( 1+ (x[2]+ (x[3]^2) * (x[4] / x[1]^2))) + x[1] + 3*x[4]*exp(1+sin(x[3]))
+  out
+}
+
+park2 = function(x){
+  
+  stopifnot(length(x)==4)
+  
+  out = (2/3 * exp(x[1]+x[2])) - (x[4] *sin(x[3])) + x[3]
+  out
+}
+
+
+run_model = function(X){
+  # Generates multivariate output from a design matrix, using
+  # the friedman, park1 and park2 functions.
+  # Input is a design matrix with 4 columns on the [0,1] cube
+  # Output is a 3 column matrix of model output
+  stopifnot(ncol(X)==4)
+  n = nrow(X)
+  
+  Y = matrix(NA, nrow = n, ncol = 3)
+  colnames(Y) = c('y1', 'y2', 'y3')
+  
+  for(i in 1:n){
+    
+    x = X[i, ]
+    
+    y1 = friedman(x)
+    y2 = park1(x)
+    y3 = park2(x)
+    
+    Y[i, ] = c(y1, y2, y3)
+    
+  }
+  Y
+}
+```
+
+### initial design  
+Set up an initial design, sampling sparsely from the input domain (as if the model was expensive to run).  
+Experiment with n (initial design points), n.app (number of points to augment the design with in each wave), and uncertainty budget.
+```{r}
+n = 10 # number of initial design points
+k = 4  # number of model inputs
+d = 3  # number of model outputs
+
+# simplest method is to choose a subset of the discovered NROY
+# points to append to the design
+  
+n_app = 10 # number of points to append
+
+X = maximinLHS(n, k = k,dup = 2)
+colnames(X) <- c('x1', 'x2', 'x3', 'x4')
+
+#X_target = matrix(runif(4), nrow = 1) # uncomment this and comment the next line for a random target input.
+X_target = matrix(rep(0.25,4), nrow = 1)
+
+# run the model outside of the function
+#Y = run_model(X)
+#Y_target = run.model(X_target)
+
+```
+
+```{r}
+
+Y_raw = run_model(X)
+Y_target_raw = run_model(X_target)
+
+Y_all_norm = normalize(rbind(Y_raw, Y_target_raw))
+Y = Y_all_norm[1:n, ]
+Y_target = matrix(Y_all_norm[n+1, ], nrow = 1)
+```
+
+
+```{r}
+# Assume the entire uncertainty budget is in the observational uncertainty initially
+#obs.sd.list = list(0.013,0.013,0.013)
+# at around 0.01, the HM breaks, putting the I of the target point above 3  
+obs_sd_list = list(0.015,0.015,0.015)
+disc_list = list(0,0,0) 
+disc_sd_list = list(0, 0, 0) 
+
+thres = 3   # implausibility threshold
+
+mins_aug = rep(0,4)
+maxes_aug = rep(1,4)
+
+# Improvements to the above function from Andrianakis et al. (2015)
+# 1) Reduce the range the emulator is fit over, as the waves continue.
+# 2) Sample candidate design points from NEAR the existing NROY design points.
+
+```
+
+This function augments the original design with points that are found to be NROY and well spaced out using the emulator.
+It samples n_aug points uniformly across the original space, a large number of times, and finds those that are NROY. It then chooses n_app of these and finds the minumum distance. It repeats this nreps times, and finds the set of n_app points with the largest minumum distance.
+
+```{r}
+wave1 = addNroyDesignPoints(X = X,
+                            Y = Y,
+                            Y_target = Y_target,
+                            n_aug = 100000,
+                            nreps = 1000,
+                            n_app = n_app,
+                            mins_aug = mins_aug,
+                            maxes_aug = maxes_aug,
+                            thres = 3,
+                            disc_list = disc_list,
+                            disc_sd_list = disc_sd_list,
+                            obs_sd_list = obs_sd_list)
+```
+
+```{r, fig.width = 8, fig.height = 8}
+ pairs(rbind(wave1$X_nroy, wave1$X, wave1$X_out, wave1$X_mm, X_target),
+       col = c(rep('darkgrey', nrow(wave1$X_nroy)),
+               rep('black', nrow(wave1$X)),
+               rep('blue', nrow(wave1$X_out)),
+               rep('red', nrow(wave1$X_mm)),
+               'gold'
+               ),
+       pch = 19,
+       xlim = c(0,1),
+       ylim = c(0,1)
+      )
+```
+
+This part takes the n.aug points found to be NROY, and chooses n_app of them that are found to be furthest apart. These are appended to the design points that are inside the marginal NROY ranges.
+```{r, fig.width = 8, fig.height = 8}
+
+# This part takes the n.aug points found to be NROY, and chooses n.app of them that are found to be
+# furthest apart. These are appended to the design points that are inside the marginal NROY ranges.
+#X2 = rbind(X[keep1_ix, ] , ChooseMaximinNroy(n_app = n_app, waveobj=wave1, nreps = 10000))
+
+# Run the model at the new design
+Y2_raw = run_model(wave1$X_out)
+Y2 = normalize(Y2_raw, wrt = Y_raw)
+
+wave2 = addNroyDesignPoints(X = wave1$X_out,
+                               Y = Y2,
+                               Y_target = Y_target,
+                               n_aug = 100000,
+                               nreps = 1000,
+                              n_app = n_app,
+                               mins_aug = mins_aug,
+                               maxes_aug = maxes_aug,
+                               thres = 3,
+                               disc_list=disc_list,
+                               disc_sd_list = disc_sd_list,
+                               obs_sd_list = obs_sd_list)
+```
+
+```{r, fig.width = 8, fig.height = 8}
+
+ pairs(rbind(wave2$X_nroy, wave2$X, wave2$X_out, wave2$X_mm, X_target),
+       col = c(rep('darkgrey', nrow(wave2$X_nroy)),
+               rep('black', nrow(wave2$X)),
+               rep('blue', nrow(wave2$X_out)),
+               rep('red', nrow(wave2$X_mm)),
+               'gold'
+               ),
+       pch = 19,
+       xlim = c(0,1),
+       ylim = c(0,1)
+      )
+```
+
+
+
+```{r}
+Y3_raw = run_model(wave2$X_out)
+Y3 = normalize(Y3_raw, wrt = Y_raw)
+
+wave3 = addNroyDesignPoints(X = wave2$X_out,
+                               Y = Y3,
+                               Y_target = Y_target,
+                               n_aug = 100000,
+                               nreps = 1000,
+                              n_app = n_app,
+                               mins_aug = mins_aug,
+                               maxes_aug = maxes_aug,
+                               thres = 3,
+                               disc_list=disc_list,
+                               disc_sd_list = disc_sd_list,
+                               obs_sd_list = obs_sd_list)
+```
+
+```{r, fig.width = 8, fig.height = 8}
+
+ pairs(rbind(wave3$X_nroy, wave3$X, wave3$X_out, wave3$X_mm, X_target),
+       col = c(rep('darkgrey', nrow(wave3$X_nroy)),
+               rep('black', nrow(wave3$X)),
+               rep('blue', nrow(wave3$X_out)),
+               rep('red', nrow(wave3$X_mm)),
+               'gold'
+               ),
+       pch = 19,
+       xlim = c(0,1),
+       ylim = c(0,1)
+      )
+```
+
+
+```{r loop}
+loopAddDesignPoint = function(X, 
+                              Y, 
+                              Y_target, 
+                              n_aug,
+                              mins_aug,
+                              maxes_aug,
+                              thres = 3, 
+                              disc_list,
+                              disc_sd_list,
+                              obs_sd_list,
+                              waves = 3,
+                              n_app = n_app,
+                              nreps = 1000,
+                              shrink = TRUE){
+  
+  if(length(n_aug) ==1){
+    n_aug = rep(n_aug, waves)
+  }
+  
+  wavelist = vector(mode='list', length = waves)
+  Xlist  = vector(mode='list', length = waves)
+  Ylist  = vector(mode='list', length = waves)
+  
+  for(i in 1:waves){
+    
+    wave = addNroyDesignPoints(X = X, 
+                                  Y = Y, 
+                                  Y_target = Y_target,
+                                  n_aug = n_aug[i], 
+                                  mins_aug = mins_aug,
+                                  maxes_aug = maxes_aug,
+                                  thres = thres,
+                               nreps = nreps,
+                                  disc_list=disc_list,
+                                  disc_sd_list = disc_sd_list,
+                                  obs_sd_list = obs_sd_list)
+    
+    # This part excludes any original design points outside of the ranges returned as NROY by
+    # add_nroy_design_points. This shrinks down the domain that the emulator
+    # is fit over.
+    
+    if(shrink){
+      keep_ix = which(apply(X, FUN = withinRange,1,
+                             maxes = wave$X_nroy_max,
+                             mins = wave$X_nroy_min))
+      
+      # This part takes the n_aug points found to be NROY, 
+      # and chooses n_app of them that are found to be furthest apart. 
+      # These are appended to the design points that are inside the marginal NROY ranges. 
+      
+      Xnew = rbind(X[keep_ix, ] , chooseMaximinNroy(n_app = n_app, waveobj=wave, nreps = nreps))
+      
+    }
+    
+    else{
+      Xnew = rbind(X, chooseMaximinNroy(n_app = n_app, waveobj = wave, nreps = nreps) )
+    }
+    
+    # Run the model at the new design
+    Ynew_raw = run_model(Xnew)
+    
+    # Normalise with respect to the original output.
+    Ynew = normalize(Ynew_raw, wrt = Ynew_raw)
+    
+    X = Xnew
+    Y = Ynew
+    
+    wavelist[[i]] = wave
+    Xlist[[i]] = X
+    Ylist[[i]] = Y
+    
+  }
+  
+  return(list(wavelist = wavelist, shrink = shrink, Xlist = Xlist, Ylist = Ylist, nreps = nreps))
+}
+
+```
+
+
+This loops through model runs, shrinking the NROY space each time
+```{r, echo = FALSE, results = 'hide', message=FALSE, hide=TRUE}
+# # this is hanging
+# waves = 3
+# n_aug = rep(100000, waves)
+# # Increase n_aug as you go through the waves?
+# #n_aug = c(100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000)
+# 
+# wavetest = loopAddDesignPoint (X = X, 
+#                                Y = Y,
+#                                Y_target = Y_target,
+#                                n_aug = n_aug, 
+#                                nreps = 1000,
+#                                mins_aug = mins_aug,
+#                                maxes_aug = maxes_aug,
+#                                thres = 3,
+#                                disc_list=disc_list,
+#                                disc_sd_list = disc_sd_list,
+#                                obs_sd_list = obs_sd_list,
+#                            n_app = n_app,
+#                            waves = waves,
+#                            shrink = TRUE
+# )
+
+```
+
+
+```{r, width = 8, height = 8}
+
+makeTransparent = function(someColor, alpha=100)
+  # Transparent colours for plotting
+{
+  newColor<-col2rgb(someColor)
+  apply(newColor, 2, function(curcoldata){rgb(red=curcoldata[1], green=curcoldata[2],
+                                              blue=curcoldata[3],alpha=alpha, maxColorValue=255)})
+}
+
+reset <- function() {
+  # Allows annotation of graphs, resets axes
+  par(mfrow=c(1, 1), oma=rep(0, 4), mar=rep(0, 4), new=TRUE)
+  plot(0:1, 0:1, type="n", xlab="", ylab="", axes=FALSE)
+}
+
+
+# for(i in 1:length(test$wavelist)){
+#   
+#   if(i==1){Xem = X}
+#   else{Xem = test$Xlist[[i-1]]}
+#   
+#   x = rbind(test$wavelist[[i]]$X_nroy, Xem, test$Xlist[[i]], X_target)
+#   
+#    # png(file = paste0('graphics/anim/toy_hm_waves_01_',sprintf("%04d",i),'.png'),
+# #width = 480, height = 480)
+#            
+#   par(oma = c(0,0,0,3), bg = 'white')
+#   cols = c(rep('darkgrey', nrow(test$wavelist[[i]]$X_nroy)),
+#            rep('blue', nrow(Xem)),
+#            rep('gold', nrow(test$Xlist[[i]])),
+#           'red')
+#  
+#   pairs(x,
+#         gap = 0, lower.panel = NULL, xlim = c(0,1), ylim = c(0,1),
+#         cex.labels = 3,
+#         col.axis = 'white',
+#         col = cols,
+#         pch = 19,
+#         cex = 1
+#            )
+#   
+#   reset()
+# legend('bottom',
+#        legend = c('NROY samples', 'Design points', 'test', 'True input (hidden)'),
+#        col = c('darkgrey', 'blue', 'gold', 'red'),
+#        inset = 0.05,
+#        cex = 1.1,
+#        pch = 19
+#        )
+# #dev.off()
+# # use 
+# # convert -delay 100 toy*.png -loop 0 movie.gif
+# # to animate the pngs.
+# }
+
+```

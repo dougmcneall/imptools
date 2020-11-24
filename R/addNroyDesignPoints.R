@@ -1,3 +1,23 @@
+#' Augment a design with NROY design points
+#'
+#' @param X original design matrix
+#' @param Y model output matrix
+#' @param Y_target target output or observation
+#' @param n_aug number of candidate points with which to augment the design
+#' @param mins_aug minima of n_aug
+#' @param maxes_aug maxima of n_aug
+#' @param thres implausibility threshold
+#' @param disc_list model discrepancy (bias)
+#' @param disc_sd_list model discrepancy uncertainty
+#' @param obs_sd_list observation (Y_target) uncertainty
+#' @param n_app final number of points with which to augment the design
+#' @param nreps number of iterations in the maximin search
+#' @param shrink keep only members of the original design hat fall within marginal limits of the NROY
+#'
+#' @return a list
+#' @export
+#'
+#' @examples
 addNroyDesignPoints = function(X, Y, Y_target, n_aug,
                                mins_aug, maxes_aug,
                                thres = 3, disc_list,
@@ -82,8 +102,6 @@ addNroyDesignPoints = function(X, Y, Y_target, n_aug,
   
   # X_mm is the new maximin sample appending the design
   X_mm = X_nroy[ix_chosen, ]
-  
-  
   
   # Add the NROY sample to the design
   if(shrink){
