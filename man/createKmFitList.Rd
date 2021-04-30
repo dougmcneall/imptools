@@ -4,7 +4,7 @@
 \alias{createKmFitList}
 \title{Create a list of dicekriging fits}
 \usage{
-createKmFitList(X, Y)
+createKmFitList(X, Y, formula = ~., ...)
 }
 \arguments{
 \item{X}{matrix of inputs (design), variables in columns}
