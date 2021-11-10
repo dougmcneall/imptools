@@ -13,6 +13,7 @@
 #' @param n_app final number of points with which to augment the design
 #' @param nreps number of iterations in the maximin search
 #' @param shrink keep only members of the original design hat fall within marginal limits of the NROY
+#' @param ... arguments to be passed to km through createKmFitList
 #'
 #' @return a list
 #' @export
@@ -24,7 +25,9 @@ addNroyDesignPoints = function(X, Y, Y_target, n_aug,
                                disc_sd_list, obs_sd_list,
                                n_app,
                                nreps,
-                               shrink = TRUE){
+                               shrink = TRUE,
+                               mc.cores = 2,
+                               ...){
 
   # Add NROY design points to a design, using uniform sampling from the
   # entire input space.
@@ -40,7 +43,7 @@ addNroyDesignPoints = function(X, Y, Y_target, n_aug,
   # NROY space.
 
   # list of fitted km objects, one list element for each output
-  fit_list = createKmFitList(X=X, Y=Y)
+  fit_list = createKmFitList(X=X, Y=Y, ...)
 
   # How good is the fit?
   loo_list = lapply(fit_list, FUN = leaveOneOut.km, type = 'UK', trend.reestim = TRUE)

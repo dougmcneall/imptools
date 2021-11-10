@@ -7,15 +7,11 @@
 #' @export
 #'
 #' @examples
-createKmFitList = function(X, Y, formula = ~., ...){
-  # create a list of km fits for multivariate output
-  Y_list = as.list(as.data.frame(Y))
+createKmFitList = function(X, Y, formula = ~., mc.cores = 2, ...){
 
-  fit_list = NULL
-  for(i in 1:length(Y_list)){
+  Y_list <- mat2list(Y)
 
-    fit = km(formula = formula,  design = X, response = Y_list[[i]], ...)
-    fit_list = c(fit_list, fit)
-  }
+  fit_list <- mclapply(Y_list, FUN = km, formula = formula, design = X, mc.cores = mc.cores, ...)
+
   fit_list
 }

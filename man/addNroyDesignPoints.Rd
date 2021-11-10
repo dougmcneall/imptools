@@ -17,7 +17,9 @@ addNroyDesignPoints(
   obs_sd_list,
   n_app,
   nreps,
-  shrink = TRUE
+  shrink = TRUE,
+  mc.cores = 2,
+  ...
 )
 }
 \arguments{
@@ -46,6 +48,8 @@ addNroyDesignPoints(
 \item{nreps}{number of iterations in the maximin search}
 
 \item{shrink}{keep only members of the original design hat fall within marginal limits of the NROY}
+
+\item{...}{arguments to be passed to km through createKmFitList}
 }
 \value{
 a list

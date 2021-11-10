@@ -91,7 +91,7 @@ d = 3  # number of model outputs
   
 n_app = 10 # number of points to append
 
-X = maximinLHS(n, k = k,dup = 2)
+  X = maximinLHS(n, k = k,dup = 2)
 colnames(X) <- c('x1', 'x2', 'x3', 'x4')
 
 #X_target = matrix(runif(4), nrow = 1) # uncomment this and comment the next line for a random target input.
